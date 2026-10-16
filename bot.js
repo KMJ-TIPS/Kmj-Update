@@ -1,11 +1,14 @@
 // ============================================================
-//   KMJ TIPS  —  bot.js  v2  (SINGLE FILE HOSTING)
+//   KMJ TIPS  —  bot.js  v2.5  (SINGLE FILE HOSTING)
 //   🎛 WEB ADMIN PANEL + Update API + Telegram Bot
 //
 //   HOST: Render (Free Web Service)   START: node bot.js
 //
 //   • /admin     <- WEB PANEL (sab kuch yahan se adjust karo)
 //   • /kmj/update  <- dex isi ko call karta hai
+//   • RECENT APP HITS: panel me live dikhta hai — dex app tak pahuncha
+//     ya nahi (UA me KMJ-TIPS-Dex/2.5 aaye to sab sahi hai)
+//   • DEBUG switch: dex me har step ka toast ON karta hai (diagnosis)
 //   • Panel password: ADMIN_PASSWORD env var (default: kmjtips)
 // ============================================================
 
@@ -52,6 +55,7 @@ let SETTINGS = {
   popup: true,                     // popup ON/OFF
   force: false,                    // force update (LATER gayab)
   sound: true,                     // popup sound ON/OFF
+  debug: false,                    // dex DEBUG toasts (test ke liye)
 };
 try {
   if (fs.existsSync(CONFIG.DATA_FILE)) {
@@ -72,6 +76,7 @@ function saveSettings() {
 }
 
 let apiHits = 0;
+const hitsLog = [];   // recent app hits — dex diagnosis (panel me dikhta hai)
 const authed = new Set();
 
 // ---------- version compare ----------
@@ -123,6 +128,12 @@ app.get("/", (req, res) => {
 app.get("/kmj/update", (req, res) => {
   apiHits++;
   const v = String(req.query.v || "0").trim();
+  hitsLog.push({
+    t: Date.now(),
+    v: v.slice(0, 20),
+    ua: String(req.headers["user-agent"] || "").slice(0, 48),
+  });
+  if (hitsLog.length > 25) hitsLog.shift();
   res.json({
     app: SETTINGS.app,
     latest: SETTINGS.latest,
@@ -135,6 +146,7 @@ app.get("/kmj/update", (req, res) => {
     btn1: SETTINGS.btn1,
     btn2: SETTINGS.btn2,
     channel: SETTINGS.channel,
+    debug: !!SETTINGS.debug,
   });
 });
 
@@ -177,7 +189,7 @@ app.post("/admin/save", (req, res) => {
   ["app", "latest", "min", "message", "url", "btn1", "btn2", "channel", "channelUrl"].forEach((k) => {
     if (typeof b[k] === "string") SETTINGS[k] = b[k].slice(0, 2000);
   });
-  ["popup", "force", "sound"].forEach((k) => {
+  ["popup", "force", "sound", "debug"].forEach((k) => {
     if (typeof b[k] === "boolean") SETTINGS[k] = b[k];
   });
   const ok = saveSettings();
@@ -188,7 +200,7 @@ app.post("/admin/save", (req, res) => {
 
 app.get("/admin/stats", (req, res) => {
   if (!isAuth(req)) return res.status(401).json({ ok: false });
-  res.json({ hits: apiHits, settings: SETTINGS, bot: !!bot });
+  res.json({ hits: apiHits, settings: SETTINGS, bot: !!bot, recent: hitsLog.slice().reverse() });
 });
 
 // ================== ADMIN PANEL PAGES ==================
@@ -303,6 +315,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "<div class='tg' id='tgPopup' onclick='tg(\"popup\")'><div class='sw'></div><span class='t'>&#128421; POPUP ON/OFF</span></div>" +
 "<div class='tg' id='tgForce' onclick='tg(\"force\")'><div class='sw'></div><span class='t'>&#9889; FORCE UPDATE</span></div>" +
 "<div class='tg' id='tgSound' onclick='tg(\"sound\")'><div class='sw'></div><span class='t'>&#128266; SOUND</span></div>" +
+"<div class='tg' id='tgDebug' onclick='tg(\"debug\")'><div class='sw'></div><span class='t'>&#128030; DEBUG</span></div>" +
 "</div></div>" +
 "<div class='btns' style='margin-top:16px'>" +
 "<button class='save' onclick='save()'>&#128190; SAVE — APP ME LIVE</button>" +
@@ -315,7 +328,16 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "</div>" +
 
 "<div class='card'><h2>&#128269; LIVE API PREVIEW <span style='font-size:10px;color:#A9A9C6'>(app ko ye milega)</span></h2>" +
+"<div style='display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap'>" +
+"<label style='margin:0;color:#A9A9C6;font-size:11px;text-transform:none;letter-spacing:0'>App version test:</label>" +
+"<input type='text' id='pv' value='1.0' style='width:80px;padding:8px 10px' oninput='preview()'>" +
+"<span style='color:#A9A9C6;font-size:10.5px'>&#8592; apna app ka versionName dal — update:true aaye to popup dikhega</span>" +
+"</div>" +
 "<pre id='preview'>loading...</pre></div>" +
+
+"<div class='card'><h2>&#128241; RECENT APP HITS <span style='font-size:10px;color:#A9A9C6'>(kaun sa app server se baat kar raha hai)</span></h2>" +
+"<div id='hitsList' style='font-family:monospace;font-size:11px;line-height:1.9;color:#A9A9C6'>loading...</div>" +
+"<div style='color:#A9A9C6;font-size:10px;margin-top:8px'>&#128241; App kholo &#8594; 15 sec me yahan <b style='color:#FFD54A'>KMJ-TIPS-Dex/2.5</b> dikhna chahiye. Nahi dikha = dex app me nahi pahuncha (rebuild/injection check karo). Hits Render restart pe reset ho jate hain.</div></div>" +
 
 "<div class='foot'>&#128226; Channel: <a href='https://t.me/kmjTips' target='_blank'>@kmjTips</a> &#8226; " +
 "<a href='#' onclick='logout()'>Logout</a><br>" +
@@ -325,7 +347,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "<script>" +
 "var S = %%SETTINGS%%;" +
 "var F = ['app','latest','min','message','url','btn1','btn2','channel','channelUrl'];" +
-"var B = ['popup','force','sound'];" +
+"var B = ['popup','force','sound','debug'];" +
 "function fill(){F.forEach(function(k){document.getElementById(k).value = S[k] || '';});" +
 "B.forEach(function(k){var el=document.getElementById('tg'+k.charAt(0).toUpperCase()+k.slice(1));" +
 "if(S[k]){el.classList.add('on');}else{el.classList.remove('on');}});}" +
@@ -336,16 +358,25 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "function save(){fetch('/admin/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())})" +
 ".then(function(r){return r.json();}).then(function(j){if(j.ok){toast('&#9989; SAVED — App me live ho gaya!');preview();chips();}else{toast('&#10060; Login expire — page reload karo');}})" +
 ".catch(function(){toast('&#10060; Network error');});}" +
-"function preview(){fetch('/kmj/update?v=1.0').then(function(r){return r.json();})" +
+"function preview(){var pv=document.getElementById('pv');" +
+"fetch('/kmj/update?v='+encodeURIComponent(pv&&pv.value?pv.value:'1.0')).then(function(r){return r.json();})" +
 ".then(function(j){document.getElementById('preview').textContent=JSON.stringify(j,null,2);});}" +
 "function chips(){fetch('/admin/stats').then(function(r){return r.json();}).then(function(j){" +
-"if(!j.ok)return;document.getElementById('hits').textContent=j.hits;" +
+"if(!j||!j.settings)return;document.getElementById('hits').textContent=j.hits;" +
 "document.getElementById('chipPop').textContent='POPUP: '+(j.settings.popup?'ON':'OFF');" +
 "document.getElementById('chipPop').className='chip'+(j.settings.popup?'':' off');" +
 "document.getElementById('chipFor').textContent='FORCE: '+(j.settings.force?'ON':'OFF');" +
 "document.getElementById('chipFor').className='chip'+(j.settings.force?' off':'');" +
 "document.getElementById('chipVer').textContent='LATEST v'+j.settings.latest;" +
-"document.getElementById('chipBot').textContent='BOT: '+(j.bot?'ONLINE':'API-ONLY');});}" +
+"document.getElementById('chipBot').textContent='BOT: '+(j.bot?'ONLINE':'API-ONLY');" +
+"var hl=document.getElementById('hitsList');if(!hl)return;" +
+"if(!j.recent||!j.recent.length){hl.innerHTML='&#9888; Abhi koi hit nahi — apna app kholke ruko, 15 sec me auto-refresh hoga';return;}" +
+"var h='';j.recent.forEach(function(x){" +
+"var dex=/KMJ-TIPS-Dex/i.test(x.ua||'');" +
+"var ua=String(x.ua||'(UA khali)').replace(/</g,'&lt;').slice(0,42);" +
+"var vv=String(x.v||'0').replace(/[^0-9A-Za-z.\\-]/g,'');" +
+"h+='<div style=\"color:'+(dex?'#FFD54A':'#6E6E8E')+'\">'+new Date(x.t).toLocaleTimeString()+' &#8226; v'+vv+' &#8226; '+ua+(dex?' &#9989;':' (panel/browser)')+'</div>';});" +
+"hl.innerHTML=h;});}" +
 "function exportS(){collect();var b=document.getElementById('impBox');" +
 "b.value=JSON.stringify(S,null,2);b.style.display='block';b.select();" +
 "try{document.execCommand('copy');}catch(e){}toast('&#128203; JSON ready — copy karke rakho');}" +
@@ -357,7 +388,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "function resetS(){S={app:'KMJ TIPS',latest:'2.0',min:'1.0'," +
 "message:'NEW UPDATE v2.0\\\\nSpeed boost + bug fixes!',url:'https://t.me/kmjTips'," +
 "btn1:'UPDATE NOW',btn2:'JOIN @kmjTips',channel:'@kmjTips',channelUrl:'https://t.me/kmjTips'," +
-"popup:true,force:false,sound:true};fill();save();}" +
+"popup:true,force:false,sound:true,debug:false};fill();save();}" +
 "function logout(){fetch('/admin/logout',{method:'POST'}).then(function(){location.reload();});}" +
 "fill();preview();chips();setInterval(chips,15000);" +
 "</script></body></html>";
@@ -443,7 +474,7 @@ if (CONFIG.BOT_TOKEN && CONFIG.BOT_TOKEN.includes(":")) {
 // ================== SERVER START ==================
 app.listen(CONFIG.PORT, () => {
   console.log("\n=========================================");
-  console.log("  " + SETTINGS.app + " — v2 (PANEL + API + BOT)");
+  console.log("  " + SETTINGS.app + " — v2.5 (PANEL + API + BOT)");
   console.log("  Port : " + CONFIG.PORT);
   console.log("  Panel: /admin  (password: ADMIN_PASSWORD env)");
   console.log("  API  : /kmj/update?v=APP_VERSION");
