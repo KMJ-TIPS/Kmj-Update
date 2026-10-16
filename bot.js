@@ -85,6 +85,11 @@ function cmp(a, b) {
   return 0;
 }
 
+// panel me \n likha ho to real newline banao (app popup + TG dono me)
+function fmtMsg() {
+  return String(SETTINGS.message || "").replace(/\\n/g, "\n");
+}
+
 // ---------- auth helpers ----------
 function getToken(req) {
   const m = /kmj_token=([a-f0-9]+)/.exec(req.headers.cookie || "");
@@ -125,7 +130,7 @@ app.get("/kmj/update", (req, res) => {
     force: SETTINGS.force || cmp(v, SETTINGS.min) < 0,
     popup: SETTINGS.popup,
     sound: SETTINGS.sound,
-    message: SETTINGS.message,
+    message: fmtMsg(),
     url: SETTINGS.url,
     btn1: SETTINGS.btn1,
     btn2: SETTINGS.btn2,
@@ -295,9 +300,9 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "<div><label>Channel URL</label><input type='text' id='channelUrl'></div>" +
 "</div>" +
 "<div style='margin-top:14px'><label>&#127918; SWITCHES</label><div class='toggles'>" +
-"<div class='tg' id='tgPop' onclick='tg(\"popup\")'><div class='sw'></div><span class='t'>&#128421; POPUP ON/OFF</span></div>" +
-"<div class='tg' id='tgFor' onclick='tg(\"force\")'><div class='sw'></div><span class='t'>&#9889; FORCE UPDATE</span></div>" +
-"<div class='tg' id='tgSnd' onclick='tg(\"sound\")'><div class='sw'></div><span class='t'>&#128266; SOUND</span></div>" +
+"<div class='tg' id='tgPopup' onclick='tg(\"popup\")'><div class='sw'></div><span class='t'>&#128421; POPUP ON/OFF</span></div>" +
+"<div class='tg' id='tgForce' onclick='tg(\"force\")'><div class='sw'></div><span class='t'>&#9889; FORCE UPDATE</span></div>" +
+"<div class='tg' id='tgSound' onclick='tg(\"sound\")'><div class='sw'></div><span class='t'>&#128266; SOUND</span></div>" +
 "</div></div>" +
 "<div class='btns' style='margin-top:16px'>" +
 "<button class='save' onclick='save()'>&#128190; SAVE — APP ME LIVE</button>" +
@@ -324,7 +329,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "function fill(){F.forEach(function(k){document.getElementById(k).value = S[k] || '';});" +
 "B.forEach(function(k){var el=document.getElementById('tg'+k.charAt(0).toUpperCase()+k.slice(1));" +
 "if(S[k]){el.classList.add('on');}else{el.classList.remove('on');}});}" +
-"function tg(k){S[k]=!S[k];fill();}" +
+"function tg(k){S[k]=!S[k];fill();save();}" +
 "function collect(){F.forEach(function(k){S[k]=document.getElementById(k).value;});return S;}" +
 "function toast(m){var t=document.getElementById('toast');t.innerHTML=m;t.classList.add('show');" +
 "setTimeout(function(){t.classList.remove('show');},2200);}" +
@@ -395,7 +400,7 @@ if (CONFIG.BOT_TOKEN && CONFIG.BOT_TOKEN.includes(":")) {
     bot.onText(/\/update/, (msg) => {
       bot.sendMessage(
         msg.chat.id,
-        "\uD83D\uDE80 *UPDATE v" + SETTINGS.latest + "*\n" + SETTINGS.message +
+        "\uD83D\uDE80 *UPDATE v" + SETTINGS.latest + "*\n" + fmtMsg() +
         "\n\n\u2B07 " + SETTINGS.url,
         { parse_mode: "Markdown" }
       );
@@ -406,7 +411,7 @@ if (CONFIG.BOT_TOKEN && CONFIG.BOT_TOKEN.includes(":")) {
         bot.answerCallbackQuery(q.id).catch(() => {});
         bot.sendMessage(
           q.message.chat.id,
-          "\uD83D\uDE80 *UPDATE v" + SETTINGS.latest + "*\n" + SETTINGS.message +
+          "\uD83D\uDE80 *UPDATE v" + SETTINGS.latest + "*\n" + fmtMsg() +
           "\n\n\u2B07 " + SETTINGS.url,
           { parse_mode: "Markdown" }
         );
