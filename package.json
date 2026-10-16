@@ -1,0 +1,23 @@
+{
+  "name": "kmj-tips-bot",
+  "version": "2.0.0",
+  "description": "KMJ TIPS - Update API + Telegram Bot (single file hosting)",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "keywords": [
+    "kmj-tips",
+    "update-api",
+    "telegram-bot"
+  ],
+  "author": "KMJ TIPS",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
