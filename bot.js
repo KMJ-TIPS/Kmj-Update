@@ -1,14 +1,17 @@
 // ============================================================
-//   KMJ TIPS  —  bot.js  v2.5  (SINGLE FILE HOSTING)
+//   KMJ TIPS  —  bot.js  v2.7  (SINGLE FILE HOSTING)
 //   🎛 WEB ADMIN PANEL + Update API + Telegram Bot
 //
 //   HOST: Render (Free Web Service)   START: node bot.js
 //
-//   • /admin     <- WEB PANEL (sab kuch yahan se adjust karo)
-//   • /kmj/update  <- dex isi ko call karta hai
-//   • RECENT APP HITS: panel me live dikhta hai — dex app tak pahuncha
-//     ya nahi (UA me KMJ-TIPS-Dex/2.5 aaye to sab sahi hai)
-//   • DEBUG switch: dex me har step ka toast ON karta hai (diagnosis)
+//   • /admin      <- WEB PANEL (control everything from here)
+//   • /kmj/update <- the API your app (dex) calls
+//   • RECENT APP HITS: live in the panel — shows whether the dex
+//     reached the app (UA should show KMJ-TIPS-Dex/2.x)
+//   • DEBUG switch: turns on step-by-step toasts inside the app
+//   • LATER BUTTON switch: show/hide the "Later" dismiss option.
+//     OFF = popup has NO Later button and CANNOT be dismissed
+//     (Back button blocked too) — only the update removes it.
 //   • Panel password: ADMIN_PASSWORD env var (default: kmjtips)
 // ============================================================
 
@@ -18,12 +21,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// ================== CONFIG — YAHAN EDIT KARO ==================
+// ================== CONFIG — EDIT HERE ==================
 const CONFIG = {
-  BOT_TOKEN: process.env.BOT_TOKEN || "YAHAN_APNA_BOT_TOKEN_DALO",
+  BOT_TOKEN: process.env.BOT_TOKEN || "PUT_YOUR_BOT_TOKEN_HERE",
   ADMIN_ID: Number(process.env.ADMIN_ID) || 0,
 
-  // WEB PANEL KA PASSWORD — ye zaroor badlo! (Render env: ADMIN_PASSWORD)
+  // WEB PANEL PASSWORD — change this! (Render env: ADMIN_PASSWORD)
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || "kmjtips",
 
   APP_NAME: "KMJ TIPS",
@@ -41,21 +44,22 @@ const CONFIG = {
 };
 // =============================================================
 
-// ---------- SETTINGS (panel se live change hote hain) ----------
+// ---------- SETTINGS (changed live from the panel) ----------
 let SETTINGS = {
   app: CONFIG.APP_NAME,
   latest: CONFIG.LATEST_VERSION,   // latest version
-  min: CONFIG.MIN_VERSION,         // isse purana = auto force
-  message: CONFIG.UPDATE_MESSAGE,  // popup ka message
-  url: CONFIG.CHANNEL_URL,         // UPDATE NOW button ka link
+  min: CONFIG.MIN_VERSION,         // older than this = auto force
+  message: CONFIG.UPDATE_MESSAGE,  // popup message
+  url: CONFIG.CHANNEL_URL,         // UPDATE NOW button link
   btn1: CONFIG.BTN1,               // button 1 text
   btn2: CONFIG.BTN2,               // button 2 text
   channel: CONFIG.CHANNEL,         // channel name (@kmjTips)
-  channelUrl: CONFIG.CHANNEL_URL,  // JOIN button ka link
+  channelUrl: CONFIG.CHANNEL_URL,  // JOIN button link
   popup: true,                     // popup ON/OFF
-  force: false,                    // force update (LATER gayab)
+  force: false,                    // force update (full-screen lock)
   sound: true,                     // popup sound ON/OFF
-  debug: false,                    // dex DEBUG toasts (test ke liye)
+  later: false,                    // "Later" dismiss button (false = popup cannot be skipped)
+  debug: false,                    // dex DEBUG toasts (for testing)
 };
 try {
   if (fs.existsSync(CONFIG.DATA_FILE)) {
@@ -76,7 +80,7 @@ function saveSettings() {
 }
 
 let apiHits = 0;
-const hitsLog = [];   // recent app hits — dex diagnosis (panel me dikhta hai)
+const hitsLog = [];   // recent app hits — dex diagnosis (shown in panel)
 const authed = new Set();
 
 // ---------- version compare ----------
@@ -90,7 +94,7 @@ function cmp(a, b) {
   return 0;
 }
 
-// panel me \n likha ho to real newline banao (app popup + TG dono me)
+// convert literal \n typed in the panel into real newlines (popup + TG)
 function fmtMsg() {
   return String(SETTINGS.message || "").replace(/\\n/g, "\n");
 }
@@ -124,7 +128,7 @@ app.get("/", (req, res) => {
   );
 });
 
-// ================== DEX API (dex isi ko call karta hai) ==================
+// ================== DEX API (called by the app's dex) ==================
 app.get("/kmj/update", (req, res) => {
   apiHits++;
   const v = String(req.query.v || "0").trim();
@@ -141,6 +145,7 @@ app.get("/kmj/update", (req, res) => {
     force: SETTINGS.force || cmp(v, SETTINGS.min) < 0,
     popup: SETTINGS.popup,
     sound: SETTINGS.sound,
+    later: !!SETTINGS.later,
     message: fmtMsg(),
     url: SETTINGS.url,
     btn1: SETTINGS.btn1,
@@ -168,7 +173,7 @@ app.post("/admin/login", (req, res) => {
     }
   } else {
     if (req.headers.accept && req.headers.accept.indexOf("json") >= 0) {
-      res.status(401).json({ ok: false, error: "Galat password!" });
+      res.status(401).json({ ok: false, error: "Wrong password!" });
     } else {
       res.redirect("/admin?err=1");
     }
@@ -184,12 +189,12 @@ app.post("/admin/logout", (req, res) => {
 
 // ================== ADMIN: SAVE SETTINGS ==================
 app.post("/admin/save", (req, res) => {
-  if (!isAuth(req)) return res.status(401).json({ ok: false, error: "Pehle login karo" });
+  if (!isAuth(req)) return res.status(401).json({ ok: false, error: "Login first" });
   const b = req.body || {};
   ["app", "latest", "min", "message", "url", "btn1", "btn2", "channel", "channelUrl"].forEach((k) => {
     if (typeof b[k] === "string") SETTINGS[k] = b[k].slice(0, 2000);
   });
-  ["popup", "force", "sound", "debug"].forEach((k) => {
+  ["popup", "force", "sound", "later", "debug"].forEach((k) => {
     if (typeof b[k] === "boolean") SETTINGS[k] = b[k];
   });
   const ok = saveSettings();
@@ -225,11 +230,11 @@ const LOGIN_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}" +
 ".shake{animation:shake .3s}" +
 "</style></head><body><div class='card'>" +
-"<h1>&#128640; KMJ TIPS</h1><p>ADMIN PANEL — Login karo</p>" +
+"<h1>&#128640; KMJ TIPS</h1><p>ADMIN PANEL — Login</p>" +
 "<form method='post' action='/admin/login' id='f'>" +
 "<input type='password' name='password' placeholder='&#128273; Password' autofocus>" +
 "<button type='submit'>&#128274; LOGIN</button>" +
-"<div class='err'>&#10060; Galat password — dobara try karo</div>" +
+"<div class='err'>&#10060; Wrong password — try again</div>" +
 "</form></div><script>var q=location.search;if(q.indexOf('err=1')>=0){document.querySelector('.err').style.display='block';document.querySelector('.card').classList.add('shake');}</script>" +
 "</body></html>";
 
@@ -291,7 +296,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "</style></head><body><div class='wrap'>" +
 
 "<div class='hdr'><h1>&#128640; KMJ TIPS — ADMIN</h1>" +
-"<p>Panel se sab kuch live adjust karo — app me turant effect hoga</p>" +
+"<p>Control everything live — changes apply in the app instantly</p>" +
 "<div class='chips'>" +
 "<span class='chip'>&#128200; API Hits: <b id='hits'>0</b></span>" +
 "<span class='chip' id='chipPop'>POPUP: ON</span>" +
@@ -303,9 +308,9 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "<div class='card'><h2>&#9881;&#65039; UPDATE SETTINGS</h2><div class='grid'>" +
 "<div><label>App Name (popup title)</label><input type='text' id='app'></div>" +
 "<div><label>Latest Version</label><input type='text' id='latest' placeholder='2.1'></div>" +
-"<div><label>Min Version (isse purana = force)</label><input type='text' id='min' placeholder='1.0'></div>" +
+"<div><label>Min Version (older than this = force)</label><input type='text' id='min' placeholder='1.0'></div>" +
 "<div><label>Update Message (\\n = new line)</label><textarea id='message' class='full' rows='3'></textarea></div>" +
-"<div><label>Button 1 Text (download)</label><input type='text' id='btn1' placeholder='UPDATE NOW'></div>" +
+"<div><label>Button 1 Text (update)</label><input type='text' id='btn1' placeholder='UPDATE NOW'></div>" +
 "<div><label>Button 1 URL (download link)</label><input type='text' id='url' placeholder='https://...'></div>" +
 "<div><label>Button 2 Text (join)</label><input type='text' id='btn2' placeholder='JOIN @kmjTips'></div>" +
 "<div><label>Channel Name</label><input type='text' id='channel' placeholder='@kmjTips'></div>" +
@@ -315,39 +320,40 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "<div class='tg' id='tgPopup' onclick='tg(\"popup\")'><div class='sw'></div><span class='t'>&#128421; POPUP ON/OFF</span></div>" +
 "<div class='tg' id='tgForce' onclick='tg(\"force\")'><div class='sw'></div><span class='t'>&#9889; FORCE UPDATE</span></div>" +
 "<div class='tg' id='tgSound' onclick='tg(\"sound\")'><div class='sw'></div><span class='t'>&#128266; SOUND</span></div>" +
+"<div class='tg' id='tgLater' onclick='tg(\"later\")'><div class='sw'></div><span class='t'>&#9193; LATER BUTTON</span></div>" +
 "<div class='tg' id='tgDebug' onclick='tg(\"debug\")'><div class='sw'></div><span class='t'>&#128030; DEBUG</span></div>" +
-"</div></div>" +
+"</div><div style='color:#A9A9C6;font-size:10px;margin-top:8px'>&#9193; LATER BUTTON OFF = no Later button in the popup, and the Back button cannot close it either — it only goes away after the update is installed (or popup turned OFF from here)</div></div>" +
 "<div class='btns' style='margin-top:16px'>" +
-"<button class='save' onclick='save()'>&#128190; SAVE — APP ME LIVE</button>" +
+"<button class='save' onclick='save()'>&#128190; SAVE — LIVE IN APP</button>" +
 "<button class='ghost' onclick='exportS()'>&#128228; EXPORT</button>" +
 "<button class='ghost' onclick='toggleImp()'>&#128228; IMPORT</button>" +
 "<button class='danger' onclick='resetS()'>&#9851; RESET</button>" +
 "</div>" +
-"<textarea id='impBox' class='imp' placeholder='Export kiya hua JSON yahan paste karo...'></textarea>" +
-"<div class='btns' style='display:none' id='impBtns'><button class='ghost' onclick='importS()'>&#9986; IMPORT APPLY KARO</button></div>" +
+"<textarea id='impBox' class='imp' placeholder='Paste the exported JSON here...'></textarea>" +
+"<div class='btns' style='display:none' id='impBtns'><button class='ghost' onclick='importS()'>&#9986; APPLY IMPORT</button></div>" +
 "</div>" +
 
-"<div class='card'><h2>&#128269; LIVE API PREVIEW <span style='font-size:10px;color:#A9A9C6'>(app ko ye milega)</span></h2>" +
+"<div class='card'><h2>&#128269; LIVE API PREVIEW <span style='font-size:10px;color:#A9A9C6'>(this is what the app receives)</span></h2>" +
 "<div style='display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap'>" +
 "<label style='margin:0;color:#A9A9C6;font-size:11px;text-transform:none;letter-spacing:0'>App version test:</label>" +
 "<input type='text' id='pv' value='1.0' style='width:80px;padding:8px 10px' oninput='preview()'>" +
-"<span style='color:#A9A9C6;font-size:10.5px'>&#8592; apna app ka versionName dal — update:true aaye to popup dikhega</span>" +
+"<span style='color:#A9A9C6;font-size:10.5px'>&#8592; enter your app's versionName — update:true means the popup will show</span>" +
 "</div>" +
 "<pre id='preview'>loading...</pre></div>" +
 
-"<div class='card'><h2>&#128241; RECENT APP HITS <span style='font-size:10px;color:#A9A9C6'>(kaun sa app server se baat kar raha hai)</span></h2>" +
+"<div class='card'><h2>&#128241; RECENT APP HITS <span style='font-size:10px;color:#A9A9C6'>(which app is talking to the server)</span></h2>" +
 "<div id='hitsList' style='font-family:monospace;font-size:11px;line-height:1.9;color:#A9A9C6'>loading...</div>" +
-"<div style='color:#A9A9C6;font-size:10px;margin-top:8px'>&#128241; App kholo &#8594; 15 sec me yahan <b style='color:#FFD54A'>KMJ-TIPS-Dex/2.5</b> dikhna chahiye. Nahi dikha = dex app me nahi pahuncha (rebuild/injection check karo). Hits Render restart pe reset ho jate hain.</div></div>" +
+"<div style='color:#A9A9C6;font-size:10px;margin-top:8px'>&#128241; Open the app &#8594; within 15 sec <b style='color:#FFD54A'>KMJ-TIPS-Dex/2.x</b> should appear here. Not showing = the dex did not reach the app (check rebuild/injection). Hits reset on Render restart.</div></div>" +
 
 "<div class='foot'>&#128226; Channel: <a href='https://t.me/kmjTips' target='_blank'>@kmjTips</a> &#8226; " +
 "<a href='#' onclick='logout()'>Logout</a><br>" +
-"&#9888;&#65039; Render free pe settings.json redeploy pe reset hota hai — Export backup le lo!</div>" +
+"&#9888;&#65039; On free Render, settings.json resets on redeploy — take an Export backup!</div>" +
 
-"</div><div class='toast' id='toast'>&#9989; SAVED — App me live ho gaya!</div>" +
+"</div><div class='toast' id='toast'>&#9989; SAVED — Live in app!</div>" +
 "<script>" +
 "var S = %%SETTINGS%%;" +
 "var F = ['app','latest','min','message','url','btn1','btn2','channel','channelUrl'];" +
-"var B = ['popup','force','sound','debug'];" +
+"var B = ['popup','force','sound','later','debug'];" +
 "function fill(){F.forEach(function(k){document.getElementById(k).value = S[k] || '';});" +
 "B.forEach(function(k){var el=document.getElementById('tg'+k.charAt(0).toUpperCase()+k.slice(1));" +
 "if(S[k]){el.classList.add('on');}else{el.classList.remove('on');}});}" +
@@ -356,7 +362,7 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "function toast(m){var t=document.getElementById('toast');t.innerHTML=m;t.classList.add('show');" +
 "setTimeout(function(){t.classList.remove('show');},2200);}" +
 "function save(){fetch('/admin/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())})" +
-".then(function(r){return r.json();}).then(function(j){if(j.ok){toast('&#9989; SAVED — App me live ho gaya!');preview();chips();}else{toast('&#10060; Login expire — page reload karo');}})" +
+".then(function(r){return r.json();}).then(function(j){if(j.ok){toast('&#9989; SAVED — Live in app!');preview();chips();}else{toast('&#10060; Login expired — reload the page');}})" +
 ".catch(function(){toast('&#10060; Network error');});}" +
 "function preview(){var pv=document.getElementById('pv');" +
 "fetch('/kmj/update?v='+encodeURIComponent(pv&&pv.value?pv.value:'1.0')).then(function(r){return r.json();})" +
@@ -370,25 +376,25 @@ const PANEL_HTML = "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
 "document.getElementById('chipVer').textContent='LATEST v'+j.settings.latest;" +
 "document.getElementById('chipBot').textContent='BOT: '+(j.bot?'ONLINE':'API-ONLY');" +
 "var hl=document.getElementById('hitsList');if(!hl)return;" +
-"if(!j.recent||!j.recent.length){hl.innerHTML='&#9888; Abhi koi hit nahi — apna app kholke ruko, 15 sec me auto-refresh hoga';return;}" +
+"if(!j.recent||!j.recent.length){hl.innerHTML='&#9888; No hits yet — open your app and wait, auto-refreshes every 15 sec';return;}" +
 "var h='';j.recent.forEach(function(x){" +
 "var dex=/KMJ-TIPS-Dex/i.test(x.ua||'');" +
-"var ua=String(x.ua||'(UA khali)').replace(/</g,'&lt;').slice(0,42);" +
+"var ua=String(x.ua||'(no UA)').replace(/</g,'&lt;').slice(0,42);" +
 "var vv=String(x.v||'0').replace(/[^0-9A-Za-z.\\-]/g,'');" +
 "h+='<div style=\"color:'+(dex?'#FFD54A':'#6E6E8E')+'\">'+new Date(x.t).toLocaleTimeString()+' &#8226; v'+vv+' &#8226; '+ua+(dex?' &#9989;':' (panel/browser)')+'</div>';});" +
 "hl.innerHTML=h;});}" +
 "function exportS(){collect();var b=document.getElementById('impBox');" +
 "b.value=JSON.stringify(S,null,2);b.style.display='block';b.select();" +
-"try{document.execCommand('copy');}catch(e){}toast('&#128203; JSON ready — copy karke rakho');}" +
+"try{document.execCommand('copy');}catch(e){}toast('&#128203; JSON ready — copied');}" +
 "function toggleImp(){var b=document.getElementById('impBox');var on=b.style.display==='block';" +
 "b.style.display=on?'none':'block';document.getElementById('impBtns').style.display=on?'none':'flex';}" +
 "function importS(){try{var o=JSON.parse(document.getElementById('impBox').value);" +
 "Object.keys(o).forEach(function(k){if(S.hasOwnProperty(k))S[k]=o[k];});fill();save();}" +
-"catch(e){toast('&#10060; Galat JSON');}}" +
+"catch(e){toast('&#10060; Invalid JSON');}}" +
 "function resetS(){S={app:'KMJ TIPS',latest:'2.0',min:'1.0'," +
 "message:'NEW UPDATE v2.0\\\\nSpeed boost + bug fixes!',url:'https://t.me/kmjTips'," +
 "btn1:'UPDATE NOW',btn2:'JOIN @kmjTips',channel:'@kmjTips',channelUrl:'https://t.me/kmjTips'," +
-"popup:true,force:false,sound:true,debug:false};fill();save();}" +
+"popup:true,force:false,sound:true,later:false,debug:false};fill();save();}" +
 "function logout(){fetch('/admin/logout',{method:'POST'}).then(function(){location.reload();});}" +
 "fill();preview();chips();setInterval(chips,15000);" +
 "</script></body></html>";
@@ -468,13 +474,13 @@ if (CONFIG.BOT_TOKEN && CONFIG.BOT_TOKEN.includes(":")) {
     console.log("[BOT] start failed:", e.message);
   }
 } else {
-  console.log("[BOT] BOT_TOKEN nahi mila — sirf API + Panel chal raha hai");
+  console.log("[BOT] BOT_TOKEN not found — running API + Panel only");
 }
 
 // ================== SERVER START ==================
 app.listen(CONFIG.PORT, () => {
   console.log("\n=========================================");
-  console.log("  " + SETTINGS.app + " — v2.5 (PANEL + API + BOT)");
+  console.log("  " + SETTINGS.app + " — v2.7 (PANEL + API + BOT)");
   console.log("  Port : " + CONFIG.PORT);
   console.log("  Panel: /admin  (password: ADMIN_PASSWORD env)");
   console.log("  API  : /kmj/update?v=APP_VERSION");
