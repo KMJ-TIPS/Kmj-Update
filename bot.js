@@ -24,14 +24,14 @@ const CONFIG = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || "kmjtips",
 
   APP_NAME: "KMJ TIPS",
-  CHANNEL: "@kmjTrick",
-  CHANNEL_URL: "https://t.me/kmjTrick",
+  CHANNEL: "@kmjTips",
+  CHANNEL_URL: "https://t.me/kmjTips",
 
   LATEST_VERSION: "2.0",
   MIN_VERSION: "1.0",
   UPDATE_MESSAGE: "NEW UPDATE v2.0\nSpeed boost + bug fixes!\nDaily premium tips free",
   BTN1: "UPDATE NOW",
-  BTN2: "JOIN @kmjTrick",
+  BTN2: "JOIN @kmjTips",
 
   PORT: process.env.PORT || 3000,
   DATA_FILE: path.join(__dirname, "settings.json"),
